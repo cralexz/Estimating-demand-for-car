@@ -1,0 +1,130 @@
+---
+title: "Estimating demand for cars"
+author: "Zhaosong Yuan, Yiqun Zhao, Jiacheng Tan"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library("lfe")
+library("data.table")
+```
+
+```{r}
+rm(list = ls());
+setwd("/Users/cralexz/Desktop/")
+```
+
+```{r}
+#Load data
+cardata=fread("cars.csv",stringsAsFactors = F)
+irondata=fread("iron_ore.csv",stringsAsFactors = F)
+
+# estimate production cost by iron
+irondata$ye = irondata$year - 1900
+irondata = irondata[, c("ye", "unit_value")]
+irondata = setkey(irondata, ye)
+cardata = setkey(cardata, ye)
+cardata = merge(cardata, irondata, all.x=TRUE)
+cardata$iron_price = cardata$we * cardata$unit_value
+```
+
+## 4. Control variables
+
+### 4.1 Interpreting a log-log regression
+
+```{r}
+#Your colleague's regression
+reg=felm(log(qu)~log(eurpr),data=cardata)
+summary(reg)
+```
+
+The intercept of 11.32 is the log of the mean sales quantity, when log of price in Euros is 0. Therefore, the mean sales quantity is 82454 when log of price in Euros is 0. The elasticity is –0.296, which is the coefficient of `log(eurpr)`, so a 1 percent increase in the price in Euros is associated with a 0.296 percent decrease in sales quantity, on average. 
+
+```{r}
+x = log(cardata$eurpr); y = log(cardata$qu)
+plot(x, y, 
+     xlab="log of price in Euros", ylab="log of sales quantity", pch='.')
+abline(felm(y~x,data=cardata))
+```
+
+The impact of the independent variable is negative, which looks reasonable as price increases the sales will decrease.
+
+### 4.2 Adding control variables
+
+```{r}
+library(gplots)
+plotmeans(qu ~ ye, main="Heterogeineity across year", data=cardata)
+```
+
+The sales quantity changes over time. In years between 87 and 93, the sales quantities are higher than other years.
+
+```{r}
+plotmeans(qu ~ ma, main="Heterogeineity across market", data=cardata)
+```
+
+The sales quantities are different across markets. Market 3 has the highest sales quantity while market 1 has the lowest sales quantity. 
+
+```{r}
+plotmeans(qu ~ co, main="Heterogeineity across car model", data=cardata)
+```
+
+From the plot we could see that a few car models has higher sales quantity than the other car models.
+
+Based on the heterogeineity across year, market, and car model, we would like to include the three factors as fixed effects variables.
+
+The independent variables we would like to include into the models are: log of price in Euros, log of nomial GDP, log of population, and average of fuel efficiency. The demand of a car is affected by its price as a high-end car is only affordable by a limited amount of population. The demand of a car is also expected to be affected by price of rival cars since people would choose rival cars at cheaper price. GDP has a positive relationship with income, which is the main driving force of the growth of car ownership. Population determines the size of the car market. The fuel efficiency is one of the major consideration when buying a car. Therefore, all these variables are used as control variables.
+
+```{r}
+# Include control variables and fixed effects
+reg4_2=felm(log(qu)~log(eurpr)+log(ngdp)+log(pop)+li|factor(ma)+factor(ye)+factor(co),data=cardata)
+summary(reg4_2)
+```
+
+The elasticity of price in Euros is –1.54, when controlled for nomial GDP, population, and fuel efficiency, so a 1 percent increase in the price in Euros is associated with a .54 percent decrease in sales quantity, on average. In addition, 1 percent increase in nomial GDP is associated with a 0.38 percent increase in sales, 1 percent increase in population is associated with a 1.59 percent increase in sales, and 1 unit increase in fuel efficiency is associated with a 0.13 percent decrease in sales, respectively. All the associations are significant at a 0.05 significant level and direction of associations are the same of what we anticipated they would be. 
+The full model explained 58.3% of variation in sales quantity. The remaining variation might be explained by omitted variables such as promotions, presence and quality of public transport, etc. For example, sucessful promotion would increase the sales and good quality of public transport would decrease the sales.
+
+## 5 Instrumental variables
+
+We would use total iron price as instrumental variable for the price since that a car is usually more expensive for a higher production price.
+
+```{r}
+# Include instrumental variable
+reg5=felm(log(qu)~log(ngdp)+log(pop)+li|factor(ma)+factor(ye)+factor(co)|(log(eurpr)~iron_price),data=cardata)
+summary(reg5) 
+t(sapply(reg5$stage1$lhs, function(lh) waldtest(reg5$stage1, ~iron_price, lhs=lh)))
+```
+
+The t-tests for instruments and the F-tests for excluded instruments in the 1st stages indicate the instrumental variable works fine. However, the estimated coefficient of `log(eurpr)` is not in the direction of what we expected. The IV regression might fail due to the estimated production price in iron is not linearly correlated with `log(eurpr)`
+
+```{r}
+plot(cardata$iron_price, log(cardata$eurpr), pch=".")
+```
+
+
+## 6 Recovering costs
+
+```{r}
+subset = cardata[1,]
+# estimated cost
+subset$avgurprrival / (1 - 1 / coef(reg4_2)[[1]])
+# sale price
+subset$eurpr
+```
+
+The estimated cost of audi model 100/200 in year 70 in market 1 is 1507, and our own-price is 3018. The estimated cost seems reasonable as it is about 50% the sale price. 
+
+## 7 Cross-elasticities and competitive effects
+
+If we include log(average rival price) into the model, we could interpret the coefficient as the elasticity of average rival price, when controled for own-price. We would expect the coefficient of log(average rival price) be positive, that means the increase of average rival price will lead to less demand in the market, when other controlled variables are not changed.
+
+```{r}
+# competitive effects
+reg7=felm(log(qu)~log(eurpr)+log(avgurprrival)+log(ngdp)+log(pop)+li|factor(ma)+factor(ye)+factor(co),data=cardata)
+summary(reg7)
+```
+
+The coefficient of log(average rival price) is 2.24, which satisfies our expectation. The coefficient of log(average rival price) indicates that the market is highly competitive, as 1 percent increase in average rival price is associated with a 2.24 percent decrease in sales quantity, on average, when holding nomial GDP, population, fuel efficiency, and own-price.
