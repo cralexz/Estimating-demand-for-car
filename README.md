@@ -1,2 +1,2 @@
 # Pricing Analytics
-### Hi everyone. My name is Yiqun. This repository contains two pricing analytics projects that were completed by me and other two team members, Zhaosong Yuan and Jiacheng Tan. 
+### Hi everyone. My name is Yiqun. This repository contains two pricing analytics projects that were completed by me and other two team members, Zhaosong Yuan and Jiacheng Tan. At project 1, we aimed to build a log-log regression model to find the best variables combination to explain the vehicle demand. At project 2, we gav our pricing strategy under two scenarios, with segmentation and without segmentation. 
